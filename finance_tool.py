@@ -32,6 +32,7 @@ query_parsing_task = Task(
     expected_output="A dictionary with keys: 'symbol', 'timeframe', 'action'.",
     output_pydantic=QueryAnalysisOutput,
     agent=query_parser_agent,
+    input_from_context={"query": "query"},
 )
 
 code_writer_agent = Agent(
@@ -39,7 +40,9 @@ code_writer_agent = Agent(
     goal="Write Python code to visualize stock data.",
     backstory="""You are a Senior Python developer specializing in stock market data visualization. 
                  You are also a Pandas, Matplotlib and yfinance library expert.
-                 You are skilled at writing production-ready Python code""",
+                 You are skilled at writing production-ready Python code.
+                 IMPORTANT: Always use 'import matplotlib.pyplot as plt' and 'plt.clf()' or 'plt.close()' for clearing figures. 
+                 Never use 'mgt' or non-existent functions like 'clearMarks()'.""",
     llm=llm,
     verbose=True,
 )
@@ -49,6 +52,7 @@ code_writer_task = Task(
                    where you would find stock symbol, timeframe and action.""",
     expected_output="A clean and executable Python script file (.py) for stock visualization.",
     agent=code_writer_agent,
+    input_from_context={"stock_analysis": "query_parsing_task"},
 )
 
 code_execution_agent = Agent(
@@ -66,6 +70,7 @@ code_execution_task = Task(
     description="""Review and execute the generated Python code by code writer agent to visualize stock data and fix any errors encountered.""",
     expected_output="A clean, working and executable Python script file (.py) for stock visualization.",
     agent=code_execution_agent,
+    input_from_context={"code": "code_writer_task"},
 )
 
 # Create the crew
@@ -78,9 +83,3 @@ crew = Crew(
 def run_financial_analysis(query):
     result = crew.kickoff(inputs={"query": query})
     return result.raw
-
-if __name__ == "__main__":
-    # Run the crew with a query
-    # query = input("Enter the stock to analyze: ")
-    result = crew.kickoff(inputs={"query": "Plot YTD stock gain of Tesla"})
-    print(result.raw)

@@ -54,9 +54,19 @@ def run_code_and_show_plot() -> str:
     """
     Run the code in stock_analysis.py and generate the plot
     """
-    with open('stock_analysis.py', 'r') as f:
-        exec(f.read())
-    return f"Code executed successfully and plot generated. Check the current directory for the plot image."
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['python', 'stock_analysis.py'],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode != 0:
+            return f"Error executing code: {result.stderr}"
+        return "Code executed successfully and plot generated. Check the current directory for the plot image."
+    except Exception as e:
+        return f"Error: {e}"
 
 # Run the server locally
 if __name__ == "__main__":
