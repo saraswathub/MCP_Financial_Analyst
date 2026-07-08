@@ -34,6 +34,73 @@ Analysis flow (finance_tool.py)
   └─ Review step
       - checks that the result is coherent
       - flags missing or partial data
+
+## Orchestration
+
+The main orchestration is implemented in `finance_tool.py` and exposed via MCP tools in `server.py`.
+
+- A request arrives at the MCP server (`analyze_stock` or `plan_analysis`).
+- The server calls into the analysis module which runs a short, synchronous sequence:
+  1. Build a concise plan (identify symbols, timeframe, intent).
+  2. Fetch market data (using `yfinance`) and normalize it.
+  3. Run the analysis step to compute price movement and volatility.
+  4. Run a lightweight verification pass that flags missing or partial data.
+
+The flow is intentionally simple and deterministic so it is easy to test and extend. Each step logs a compact event and updates in-process counters so you can track how often each operation runs.
+
+## Observability
+
+The repository includes basic observability primitives so you can tell what the system is doing:
+
+- Structured logs: `server.py` configures a basic logger; `finance_tool.py` logs plan creation, fetch attempts, analysis starts/completion, and errors.
+- Runtime metrics: an in-process counters map (`get_metrics()`) is provided for quick inspection. The MCP tool `metrics()` returns these counters as JSON.
+- Verification output: analysis results include a `verification` field that reports whether the output is complete or partial.
+
+How to use them:
+
+1. Start the server and call `plan_analysis(query)` to see the execution plan.
+2. Call `analyze_stock(query)` to run the analysis; check logs for step-level events.
+3. Call `metrics()` to get counters such as requests, successes, failures, plans, data_fetches, and analyses.
+
+Notes on production readiness:
+
+- Logs are plain-text by default; swap in a JSON formatter or ship logs to a log-collector for production.
+- The metrics API is a lightweight helper. This project provides optional Prometheus support via `prometheus_client`.
+
+### Prometheus metrics
+
+If `prometheus_client` is installed, the server starts a small HTTP endpoint on port `8000` that exposes runtime counters for scraping.
+
+Quick setup:
+
+1. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Run the server:
+
+```bash
+python server.py
+```
+
+3. Configure Prometheus to scrape `http://<host>:8000` (see example below).
+
+Example `prometheus.yml` snippet:
+
+```yaml
+scrape_configs:
+  - job_name: 'mcp_financial'
+    static_configs:
+      - targets: ['localhost:8000']
+```
+
+The exposed metric names are simple counters such as `mcp_financial_requests`, `mcp_financial_successes`, and `mcp_financial_failures`.
+
+For production, consider integrating a full-featured metrics pipeline and exporting richer histograms or timing metrics.
+- For safer execution of any generated code, add sandboxing (containers or separate processes) and stricter validation.
+
 ```
 
 ## What it does

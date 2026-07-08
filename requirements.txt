@@ -1,0 +1,4 @@
+yfinance
+mcp
+prometheus_client
+# Optional: add any LLM runtimes you use (e.g. ollama client)
