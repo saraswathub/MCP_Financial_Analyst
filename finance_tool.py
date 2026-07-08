@@ -2,11 +2,24 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
+import logging
 
 try:
     import yfinance as yf
 except ImportError:  # pragma: no cover - handled gracefully at runtime
     yf = None
+
+# simple runtime metrics (keeps process-local counters)
+METRICS: Dict[str, int] = {
+    "requests": 0,
+    "successes": 0,
+    "failures": 0,
+    "plans": 0,
+    "data_fetches": 0,
+    "analyses": 0,
+}
+
+logger = logging.getLogger("mcp_financial")
 
 
 @dataclass
@@ -93,6 +106,9 @@ def build_analysis_plan(query: str, memory_context: Dict[str, Any]) -> AnalysisP
     elif any(token in lowered for token in ["volatility", "risk", "variance"]):
         intent = "risk"
 
+    # record that a plan was created
+    METRICS["plans"] += 1
+
     steps = [
         "Plan the request into a short market-analysis workflow",
         "Fetch and organize market data from yfinance",
@@ -115,7 +131,10 @@ def build_analysis_plan(query: str, memory_context: Dict[str, Any]) -> AnalysisP
 def fetch_market_data(symbols: List[str], timeframe: str) -> Dict[str, Any]:
     """Retrieve historical data for the selected symbols."""
 
+    METRICS["data_fetches"] += 1
+
     if yf is None:
+        logger.warning("yfinance not installed; returning error placeholders")
         return {symbol: {"error": "yfinance is not installed"} for symbol in symbols}
 
     period_map = {"1d": "1d", "1mo": "1mo", "6mo": "6mo", "1y": "1y", "2y": "2y", "5y": "5y"}
@@ -126,12 +145,14 @@ def fetch_market_data(symbols: List[str], timeframe: str) -> Dict[str, Any]:
             frame = yf.download(symbol, period=period, progress=False, auto_adjust=True)
             frames[symbol] = frame if not frame.empty else {"error": "No data returned"}
         except Exception as exc:  # pragma: no cover - depends on network availability
+            logger.exception("Error fetching data for %s: %s", symbol, exc)
             frames[symbol] = {"error": str(exc)}
     return frames
 
 
 def analyze_market_data(symbols: List[str], timeframe: str, intent: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
     """Produce a structured analysis summary with basic trend and risk metrics."""
+    METRICS["analyses"] += 1
 
     metrics: List[Dict[str, Any]] = []
     for symbol in symbols:
@@ -195,27 +216,50 @@ def verify_analysis(summary: str, metrics: List[Dict[str, Any]]) -> str:
 
 def run_financial_analysis(query: str) -> str:
     """Run the analysis workflow and return a structured JSON report."""
-
+    METRICS["requests"] += 1
     memory.remember("latest_query", query)
-    plan = build_analysis_plan(query, memory.get_context())
-    market_data = fetch_market_data(plan.symbols, plan.timeframe)
-    analysis = analyze_market_data(plan.symbols, plan.timeframe, plan.intent, market_data)
-    verification = verify_analysis(analysis["summary"], analysis["metrics"])
+    logger.info("Starting analysis for query: %s", query)
 
-    report = {
-        "workflow": "plan -> retrieve -> analyze -> verify",
-        "plan": {
-            "symbols": plan.symbols,
-            "timeframe": plan.timeframe,
-            "intent": plan.intent,
-            "steps": plan.steps,
-        },
-        "analysis": analysis["summary"],
-        "metrics": analysis["metrics"],
-        "verification": verification,
-        "memory_context": memory.get_context(),
-    }
-    return json.dumps(report, indent=2)
+    try:
+        plan = build_analysis_plan(query, memory.get_context())
+        logger.debug("Plan created: %s", plan)
+
+        market_data = fetch_market_data(plan.symbols, plan.timeframe)
+        analysis = analyze_market_data(plan.symbols, plan.timeframe, plan.intent, market_data)
+        verification = verify_analysis(analysis["summary"], analysis["metrics"])
+
+        report = {
+            "workflow": "plan -> retrieve -> analyze -> verify",
+            "plan": {
+                "symbols": plan.symbols,
+                "timeframe": plan.timeframe,
+                "intent": plan.intent,
+                "steps": plan.steps,
+            },
+            "analysis": analysis["summary"],
+            "metrics": analysis["metrics"],
+            "verification": verification,
+            "memory_context": memory.get_context(),
+        }
+
+        METRICS["successes"] += 1
+        logger.info("Analysis completed for query: %s", query)
+        return json.dumps(report, indent=2)
+    except Exception as exc:  # pragma: no cover - defensive handling
+        METRICS["failures"] += 1
+        logger.exception("Error running analysis for query: %s", query)
+        return json.dumps({"error": str(exc)})
 
 
-__all__ = ["AgentPlan", "SessionMemory", "build_agentic_plan", "run_financial_analysis"]
+def get_metrics() -> Dict[str, int]:
+    """Return the runtime metrics counters."""
+    return dict(METRICS)
+
+
+__all__ = [
+    "AnalysisPlan",
+    "SessionContext",
+    "build_analysis_plan",
+    "run_financial_analysis",
+    "get_metrics",
+]
