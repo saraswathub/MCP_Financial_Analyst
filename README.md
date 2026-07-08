@@ -1,107 +1,90 @@
 # MCP Financial Analyst
 
-**A fully local, natural language-driven stock market analysis system powered by multi-agent AI**
+A simple local tool for turning stock questions into useful market analysis.
 
-MCP Financial Analyst is a privacy-focused, 100% local financial analysis tool that transforms natural language queries into executable Python code for retrieving, analyzing, and visualizing stock market data.
+MCP Financial Analyst is meant for privacy-minded market research. It works through a short sequence of steps:
 
-It uses:
-- **CrewAI** for multi-agent orchestration
-- **DeepSeek-R1** (local LLM via Ollama in Docker)
-- **Modular Command Platform (MCP)** as the runtime bridge
-- **yfinance**, **pandas**, and **matplotlib** for data and charting
+- Plan the request and identify the relevant symbols
+- Gather market data from yfinance
+- Summarize performance, trends, and risk
+- Check the result before returning it
 
-All processing happens on your machine — no cloud API keys, no data leaves your computer.
+It uses the Model Context Protocol (MCP), so it can work with tools like Cursor, Claude Desktop, or custom clients.
 
-## Features
+## How it works
 
-- Natural language interface for financial queries  
-  ("Compare year-to-date performance of AAPL vs MSFT", "Show volatility of NVDA last 6 months", etc.)
-- Modular CrewAI agent architecture:
-  - **Query Parser Agent** — understands intent and extracts parameters
-  - **Code Writer Agent** — generates safe, correct Python analysis code
-  - **Code Executor Agent** — runs code in a sandboxed environment
-- Chart generation & visualization (line plots, bar charts, candlesticks, etc.)
-- Fully local inference using DeepSeek-R1 via Ollama + Docker
-- MCP-powered execution environment (great integration with Cursor, Claude Desktop, VS Code, etc.)
-
-## Demo Example
-
-**User query:**
-
-> Plot year-to-date performance for AAPL and MSFT
-
-**What happens behind the scenes:**
-1. Query Parser understands: plot → YTD performance → tickers AAPL, MSFT
-2. Code Writer generates Python script using yfinance + matplotlib
-3. Code Executor runs the script securely
-4. Result: beautiful matplotlib chart returned to you
-
-## Architecture
-````
+```text
 User Query
-↓ (natural language via MCP client — e.g. Cursor, Claude Desktop, VS Code extension)
+  ↓
+MCP Client / IDE
+  ↓
 MCP Server (server.py)
-↓
-CrewAI Orchestrator
-├─ Query Parser Agent ──► DeepSeek-R1 (via Ollama @ localhost:11434)
-│   Extracts intent, tickers, timeframes, analysis type
-├─ Code Writer Agent  ──► DeepSeek-R1 (via Ollama)
-│   Generates clean, executable Python code using yfinance + pandas + matplotlib
-└─ Code Executor Agent ──► Sandboxed execution environment
-↓
-Data Fetch → Analysis → Plot Generation
-↓
-Result (text summary + matplotlib chart image) returned via MCP
+  ↓
+Analysis flow (finance_tool.py)
+  ├─ Planning step
+  │   - understands the request
+  │   - extracts the relevant tickers and timeframe
+  │   - builds a short execution plan
+  ├─ Data step
+  │   - pulls market data from yfinance
+  │   - prepares the dataset for review
+  ├─ Analysis step
+  │   - calculates price movement and volatility
+  │   - builds a concise summary
+  └─ Review step
+      - checks that the result is coherent
+      - flags missing or partial data
+```
 
-````
+## What it does
 
-All LLM inference and code execution remain fully local — no external API calls except yfinance data downloads.
+- Natural-language financial queries such as:
+  - "Compare Apple and Microsoft over the last year"
+  - "Show Tesla volatility for the last 6 months"
+  - "Analyze the trend for Nvidia"
+- Structured JSON output rather than a single raw script
+- Local-first data retrieval using yfinance
+- A design that can be expanded later with tools such as:
+  - news ingestion
+  - portfolio context
+  - chart generation
+  - vector memory
+  - sandboxed code execution
 
-## Prerequisites
+## Technical stack
 
-- Python 3.10 or higher
-- Docker (to run Ollama)
-- Ollama running in Docker with DeepSeek-R1 pulled
-- `uv` (preferred for fast, clean dependency management) or `pip`
-- Visual Studio Code (strongly recommended for MCP integration with Cursor or similar tools)
-
-## Setup – Start Ollama with DeepSeek-R1
-
-```bash
-# Start Ollama container in detached mode
-docker run -d -p 11434:11434 --name ollama-deepseek ollama/ollama
-
-# Attach to container and pull the model (only needed once)
-docker exec -it ollama-deepseek ollama pull deepseek-r1
-
-# Verify it's running → should respond
-curl http://localhost:11434
-
-````
-
-
-Keep the container running in the background.
+- Python 3.10+
+- MCP server runtime via FastMCP
+- yfinance for market data
+- Optional local LLM runtime via Ollama and DeepSeek for richer reasoning later
 
 ## Installation
 
-````bash
+```bash
 git clone https://github.com/YOUR_USERNAME/MCP_Financial_Analyst.git
 cd MCP_Financial_Analyst
+pip install yfinance mcp
+```
 
-# Preferred: fast & clean installs with uv
-uv pip install -r requirements.txt
+## Running the server
 
-# Classic alternative
-# pip install -r requirements.txt
-````
+```bash
+python server.py
+```
 
-## Running the MCP Server
-````bash
-# Cleanest way (recommended)
-uv run server.py
+The server exposes the following MCP tools:
 
-# Or with explicit path (useful when configuring MCP clients)
-uv --directory /full/path/to/MCP_Financial_Analyst run server.py
-````
+- analyze_stock(query): runs the full analysis workflow
+- plan_analysis(query): returns the execution plan before the analysis step
+- save_code(code): legacy helper for saving generated Python code
+- run_code_and_show_plot(): legacy helper for executing a saved script
 
-Once started, the server listens for connections from MCP-compatible clients (Cursor, Claude Desktop with MCP support, custom clients, etc.).
+## Next steps
+
+The next step is to make the system more useful by adding:
+
+- a tighter planning and review loop
+- support for news and portfolio context
+- simple memory for follow-up questions
+- sandboxed execution for generated code
+- optional integration with a more advanced orchestration layer

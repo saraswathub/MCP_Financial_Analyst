@@ -1,73 +1,80 @@
+import json
+
 from mcp.server.fastmcp import FastMCP
-from finance_tool import run_financial_analysis
+
+from finance_tool import build_analysis_plan, run_financial_analysis
 
 # create FastMCP instance
 mcp = FastMCP("financial-analyst")
 
+
 @mcp.tool()
 def analyze_stock(query: str) -> str:
     """
-    Analyzes stock market data based on the query and generates executable Python code for analysis and visualization.
-    Returns a formatted Python script ready for execution.
-    
-    The query is a string that must contain the stock symbol (e.g., TSLA, AAPL, NVDA, etc.), 
-    timeframe (e.g., 1d, 1mo, 1y), and action to perform (e.g., plot, analyze, compare).
+    Run the financial-analysis workflow for a natural-language investment query.
 
-    Example queries:
-    - "Show me Tesla's stock performance over the last 3 months"
-    - "Compare Apple and Microsoft stocks for the past year"
-    - "Analyze the trading volume of Amazon stock for the last month"
-
-    Args:
-        query (str): The query to analyze the stock market data.
-    
-    Returns:
-        str: A nicely formatted python code as a string.
+    The workflow follows a simple plan -> retrieve -> analyze -> verify sequence and returns
+    a structured JSON report.
     """
     try:
-        result = run_financial_analysis(query)
-        return result
-    except Exception as e:
-        return f"Error: {e}"
+        return run_financial_analysis(query)
+    except Exception as exc:  # pragma: no cover - defensive runtime handling
+        return f"Error: {exc}"
+
+
+@mcp.tool()
+def plan_analysis(query: str) -> str:
+    """Return the execution plan for a query before analysis runs."""
+
+    try:
+        plan = build_analysis_plan(query, {})
+        return json.dumps(
+            {
+                "symbols": plan.symbols,
+                "timeframe": plan.timeframe,
+                "intent": plan.intent,
+                "steps": plan.steps,
+            },
+            indent=2,
+        )
+    except Exception as exc:  # pragma: no cover - defensive runtime handling
+        return f"Error: {exc}"
+
 
 @mcp.tool()
 def save_code(code: str) -> str:
     """
-    Expects a nicely formatted, working and executable python code as input in form of a string. 
-    Save the given code to a file stock_analysis.py, make sure the code is a valid python file, nicely formatted and ready to execute.
-
-    Args:
-        code (str): The nicely formatted, working and executable python code as string.
-    
-    Returns:
-        str: A message indicating the code was saved successfully.
+    Legacy compatibility helper for saving a generated Python script.
     """
     try:
-        with open('stock_analysis.py', 'w') as f:
-            f.write(code)
+        with open("stock_analysis.py", "w", encoding="utf-8") as handle:
+            handle.write(code)
         return "Code saved to stock_analysis.py"
-    except Exception as e:
-        return f"Error: {e}"
+    except Exception as exc:  # pragma: no cover - defensive runtime handling
+        return f"Error: {exc}"
+
 
 @mcp.tool()
 def run_code_and_show_plot() -> str:
     """
-    Run the code in stock_analysis.py and generate the plot
+    Legacy compatibility helper for executing a saved Python script.
     """
     try:
         import subprocess
+
         result = subprocess.run(
-            ['python', 'stock_analysis.py'],
+            ["python", "stock_analysis.py"],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=60,
         )
         if result.returncode != 0:
             return f"Error executing code: {result.stderr}"
         return "Code executed successfully and plot generated. Check the current directory for the plot image."
-    except Exception as e:
-        return f"Error: {e}"
+    except Exception as exc:  # pragma: no cover - defensive runtime handling
+        return f"Error: {exc}"
+
 
 # Run the server locally
 if __name__ == "__main__":
-    mcp.run(transport='stdio')
+    mcp.run(transport="stdio")
